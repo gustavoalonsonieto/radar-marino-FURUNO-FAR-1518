@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#06131b">
+<title>Simulador interactivo de radar marino</title>
+<style>
+:root{--bg:#07151d;--panel:#0d222d;--line:#1b4553;--green:#62f5a4;--muted:#9bb7c1;--white:#e8f4f5;--amber:#ffc66d}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(145deg,#061119,#0a202b);color:var(--white);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{padding:18px 20px 12px;max-width:1200px;margin:auto}
+h1{font-size:clamp(21px,4vw,30px);margin:0 0 5px;letter-spacing:.02em}
+.sub{color:var(--muted);font-size:13px}
+main{max-width:1200px;margin:auto;padding:0 16px 24px;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.8fr);gap:14px}
+.panel{background:rgba(13,34,45,.94);border:1px solid var(--line);border-radius:15px;padding:14px;box-shadow:0 12px 30px #0003}
+.radar-wrap{position:relative;width:100%;max-width:680px;margin:auto;aspect-ratio:1}
+canvas{width:100%;height:100%;display:block;border-radius:50%;background:#03100d}
+.overlay{position:absolute;inset:0;pointer-events:none}
+.readout{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--green);font:12px ui-monospace,monospace;margin:8px 2px 0}
+h2{font-size:16px;margin:0 0 12px;color:#dff9ef}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.control{background:#091b24;border:1px solid #183b48;border-radius:10px;padding:10px}
+label{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#d6e9eb;margin-bottom:7px}
+output{color:var(--green);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:#59e99a}
+select,button{font:inherit;border-radius:9px;border:1px solid #2b5867;background:#102c38;color:var(--white);padding:9px}
+button{cursor:pointer}
+button:hover{background:#194353}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.primary{background:#14553e;border-color:#2c9b68}
+.danger{background:#4a2525;border-color:#874646}
+.status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+.dot.off{background:#ff7777;box-shadow:0 0 8px #ff7777}
+.targets{width:100%;border-collapse:collapse;font-size:13px}
+.targets th,.targets td{text-align:left;padding:8px 5px;border-bottom:1px solid #1a3b47}
+.targets th{color:var(--muted);font-weight:500}
+.targets tr{cursor:pointer}
+.targets tr:hover{background:#153441}
+.note{font-size:12px;color:var(--muted);margin:12px 0 0}
+.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:10px}
+.key{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.section{margin-top:14px}
+.info{padding:10px;border-radius:9px;background:#091b24;border:1px solid #183b48;color:#c5dadd;font-size:13px;min-height:65px}
+footer{max-width:1200px;margin:0 auto;padding:0 16px 24px;color:#819da7;font-size:11px}
+@media(max-width:800px){main{grid-template-columns:1fr}.panel{padding:12px}.controls{grid-template-columns:1fr 1fr}}
+@media(max-width:390px){.controls{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>RADAR MARINO · SIMULADOR INTERACTIVO</h1>
+  <div class="sub">Pantalla didáctica tipo PPI · blancos, marcación, distancia y controles básicos</div>
+</header>
+<main>
+  <section class="panel">
+    <div class="status"><span id="lamp" class="dot"></span><span id="state">TRANSMITIENDO · barrido activo</span><span style="margin-left:auto">N arriba · proa fija</span></div>
+    <div class="radar-wrap"><canvas id="radar" width="900" height="900" aria-label="Pantalla de radar marino"></canvas></div>
+    <div class="readout"><span id="bearing">MARCA: --°</span><span id="rangeRead">ESCALA: 6 NM</span><span id="cursorRead">CURSOR: --</span></div>
+    <div class="legend">
+      <span><i class="key" style="background:#8cffbd"></i>Eco de blanco</span>
+      <span><i class="key" style="background:#ffe08a"></i>Marca seleccionada</span>
+      <span><i class="key" style="background:#4be4a0"></i>Línea de proa</span>
+    </div>
+    <p class="note">Toca o haz clic sobre un eco para seleccionarlo. La marcación se mide desde el norte en sentido horario.</p>
+  </section>
+
+  <aside>
+    <section class="panel">
+      <h2>Controles del radar</h2>
+      <div class="controls">
+        <div class="control">
+          <label for="range">Escala <output id="rangeVal">6 NM</output></label>
+          <select id="range"><option>0.75</option><option>1.5</option><option>3</option><option selected>6</option><option>12</option><option>24</option><option>48</option></select>
+        </div>
+        <div class="control">
+          <label for="gain">Ganancia <output id="gainVal">70%</output></label>
+          <input id="gain" type="range" min="0" max="100" value="70">
+        </div>
+        <div class="control">
+          <label for="sea">Anti-clutter mar <output id="seaVal">20%</output></label>
+          <input id="sea" type="range" min="0" max="100" value="20">
+        </div>
+        <div class="control">
+          <label for="rain">Anti-clutter lluvia <output id="rainVal">10%</output></label>
+          <input id="rain" type="range" min="0" max="100" value="10">
+        </div>
+        <div class="control">
+          <label for="mode">Orientación</label>
+          <select id="mode"><option value="north">Norte arriba</option><option value="head">Proa arriba</option></select>
+        </div>
+        <div class="control">
+          <label for="motion">Movimiento blancos</label>
+          <select id="motion"><option value="on">Activado</option><option value="off">Pausado</option></select>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="toggle" class="primary">Pasar a STBY</button>
+        <button id="reset">Reiniciar barrido</button>
+        <button id="add">Añadir blanco</button>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <h2>Blancos detectados</h2>
+      <table class="targets">
+        <thead><tr><th>ID</th><th>Marcación</th><th>Distancia</th><th>Rumbo</th></tr></thead>
+        <tbody id="targetRows"></tbody>
+      </table>
+      <div class="section">
+        <h2>Información del blanco</h2>
+        <div class="info" id="details">Selecciona un eco en la pantalla o una fila de la tabla para ver sus datos.</div>
+      </div>
+    </section>
+  </aside>
+</main>
+<footer>
+  Material demostrativo para aprendizaje. Este simulador no es un radar real, no recibe señales, no calcula riesgo de colisión y no debe utilizarse para navegación ni para tomar decisiones operacionales.
+</footer>
+<script>
+(() => {
+const canvas=document.getElementById('radar'),ctx=canvas.getContext('2d');
+const C=450,R=405;
+let transmitting=true,angle=0,last=0,selected=null,nextId=5;
+let range=6, gain=70, sea=20, rain=10, orientation='north', moving=true;
+let targets=[
+ {id:'T1',b:38,d:2.1,course:215,speed:8},
+ {id:'T2',b:112,d:4.2,course:305,speed:11},
+ {id:'T3',b:188,d:1.35,course:40,speed:6},
+ {id:'T4',b:278,d:5.1,course:95,speed:9}
+];
+const $=id=>document.getElementById(id);
+const rad=d=>d*Math.PI/180;
+function xy(b,d){let a=rad(b-(orientation==='head'?0:0));let rr=d/range*R;return {x:C+Math.sin(a)*rr,y:C-Math.cos(a)*rr};}
+function draw(){
+ const g=ctx;g.clearRect(0,0,900,900);
+ g.fillStyle='#03100d';g.fillRect(0,0,900,900);
+ // soft phosphor background
+ let bg=g.createRadialGradient(C,C,10,C,C,R);bg.addColorStop(0,'#09271b');bg.addColorStop(1,'#03100d');g.fillStyle=bg;g.beginPath();g.arc(C,C,R,0,Math.PI*2);g.fill();
+ g.save();g.beginPath();g.arc(C,C,R,0,Math.PI*2);g.clip();
+ g.strokeStyle='rgba(80,220,145,.35)';g.lineWidth=1.5;
+ for(let i=1;i<=4;i++){g.beginPath();g.arc(C,C,R*i/4,0,Math.PI*2);g.stroke();}
+ for(let b=0;b<360;b+=30){let p=xy(b,range);g.beginPath();g.moveTo(C,C);g.lineTo(p.x,p.y);g.stroke();}
+ // cardinal labels
+ g.fillStyle='#9be8bd';g.font='bold 24px system-ui';g.textAlign='center';
+ [['N',0,-R+28],['E',R-25,8],['S',0,R-8],['W',-R+25,8]].forEach(([t,x,y])=>g.fillText(t,C+x,C+y));
+ // range labels
+ g.font='16px ui-monospace';g.fillStyle='rgba(160,230,190,.8)';
+ for(let i=1;i<=4;i++)g.fillText((range*i/4)+'',C+8,C-R*i/4+18);
+ // heading line
+ g.strokeStyle='#4be4a0';g.lineWidth=2;g.beginPath();g.moveTo(C,C);let hp=xy(0,range);g.lineTo(hp.x,hp.y);g.stroke();
+ // echoes
+ targets.forEach(t=>{
+   if(t.d>range)return;
+   let p=xy(t.b,t.d),strength=Math.max(.18,Math.min(1,gain/75));
+   let alpha=Math.min(1,strength*(1-sea*.004)*(1-rain*.002));
+   g.save();g.shadowBlur=12;g.shadowColor='#78ffad';g.fillStyle=`rgba(130,255,177,${alpha})`;
+   g.beginPath();g.ellipse(p.x,p.y,7,5,rad(t.b),0,Math.PI*2);g.fill();g.restore();
+   if(t.id===selected){g.strokeStyle='#ffe08a';g.lineWidth=3;g.beginPath();g.arc(p.x,p.y,16,0,Math.PI*2);g.stroke();g.fillStyle='#ffe08a';g.font='bold 17px system-ui';g.fillText(t.id,p.x+18,p.y-12);}
+ });
+ // sweep wedge
+ if(transmitting){
+   let a=rad(angle-90);
+   let grad=g.createRadialGradient(C,C,0,C,C,R);
+   grad.addColorStop(0,'rgba(71,255,155,.02)');grad.addColorStop(1,'rgba(71,255,155,.22)');
+   g.fillStyle=grad;g.beginPath();g.moveTo(C,C);g.arc(C,C,R,a-.08,a+.015);g.closePath();g.fill();
+   g.strokeStyle='#8dffc0';g.lineWidth=3;g.shadowBlur=14;g.shadowColor='#69ffa8';
+   g.beginPath();g.moveTo(C,C);g.lineTo(C+Math.cos(rad(angle-90))*R,C+Math.sin(rad(angle-90))*R);g.stroke();g.shadowBlur=0;
+ }
+ g.restore();
+ // center own ship
+ g.fillStyle='#d5fff0';g.beginPath();g.moveTo(C,C-12);g.lineTo(C-8,C+10);g.lineTo(C,C+5);g.lineTo(C+8,C+10);g.closePath();g.fill();
+}
+function updateTable(){
+ $('targetRows').innerHTML='';
+ targets.forEach(t=>{
+   let tr=document.createElement('tr');tr.innerHTML=`<td>${t.id}</td><td>${Math.round(t.b)}°</td><td>${t.d.toFixed(2)} NM</td><td>${t.course}°</td>`;
+   tr.onclick=()=>select(t.id);$('targetRows').appendChild(tr);
+ });
+}
+function select(id){
+ selected=id;let t=targets.find(x=>x.id===id);if(!t)return;
+ $('details').innerHTML=`<b>${t.id}</b><br>Marcación: ${Math.round(t.b)}°<br>Distancia: ${t.d.toFixed(2)} millas náuticas<br>Rumbo simulado: ${t.course}°<br>Velocidad simulada: ${t.speed} nudos`;
+ updateTable();draw();
+}
+function animate(ts){
+ if(!last)last=ts;let dt=Math.min((ts-last)/1000,.05);last=ts;
+ if(transmitting){angle=(angle+dt*24)%360;}
+ if(moving){targets.forEach(t=>{t.b=(t.b+dt*(t.speed/60))%360;});}
+ draw();requestAnimationFrame(animate);
+}
+canvas.addEventListener('pointerdown',e=>{
+ const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)/rect.width*900,y=(e.clientY-rect.top)/rect.height*900;
+ let best=null,dist=24;
+ targets.forEach(t=>{let p=xy(t.b,t.d),d=Math.hypot(p.x-x,p.y-y);if(d<dist){dist=d;best=t;}});
+ if(best)select(best.id);
+});
+$('range').onchange=e=>{range=+e.target.value;$('rangeVal').textContent=range+' NM';$('rangeRead').textContent='ESCALA: '+range+' NM';draw();};
+[['gain','gainVal'],['sea','seaVal'],['rain','rainVal']].forEach(([id,out])=>$(id).oninput=e=>{window[id]=+e.target.value;$(out).textContent=e.target.value+'%';});
+$('mode').onchange=e=>{orientation=e.target.value;draw();};
+$('motion').onchange=e=>moving=e.target.value==='on';
+$('toggle').onclick=()=>{transmitting=!transmitting;$('toggle').textContent=transmitting?'Pasar a STBY':'Reanudar TX';$('state').textContent=transmitting?'TRANSMITIENDO · barrido activo':'STANDBY · sin transmisión';$('lamp').classList.toggle('off',!transmitting);};
+$('reset').onclick=()=>{angle=0;selected=null;$('details').textContent='Barrido reiniciado. Selecciona un eco para ver sus datos.';draw();};
+$('add').onclick=()=>{let id='T'+nextId++;targets.push({id,b:Math.floor(Math.random()*360),d:+(0.8+Math.random()*(range*.85)).toFixed(2),course:Math.floor(Math.random()*360),speed:Math.floor(4+Math.random()*15)});updateTable();};
+$('bearing').textContent='MARCA: 000°';
+setInterval(()=>{$('bearing').textContent='MARCA: '+String(Math.round(angle)).padStart(3,'0')+'°';},150);
+updateTable();requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
